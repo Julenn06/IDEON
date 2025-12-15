@@ -63,6 +63,9 @@ dependencies:
   intl: ^0.20.2
   path_provider: ^2.1.5
   
+  # HTTP Client
+  http: ^1.2.0
+  
   # Haptic Feedback
   vibration: ^3.1.4
 
