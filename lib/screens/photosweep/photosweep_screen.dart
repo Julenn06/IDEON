@@ -4,6 +4,9 @@ import 'package:photo_manager/photo_manager.dart';
 import 'package:photo_manager_image_provider/photo_manager_image_provider.dart';
 import '../../core/services/haptic_service.dart';
 import '../../core/services/trash_service.dart';
+import '../../core/services/stats_service.dart';
+import '../../core/constants/cleaning_tips.dart';
+import '../../core/providers/settings_provider.dart';
 import 'trash_review_screen.dart';
 
 class PhotoSweepScreen extends ConsumerStatefulWidget {
@@ -19,6 +22,7 @@ class _PhotoSweepScreenState extends ConsumerState<PhotoSweepScreen> with Ticker
   final List<AssetEntity> _photosToDelete = [];
   bool _isLoading = true;
   int _trashCount = 0;
+  int _totalBytesDeleted = 0; // Nuevo: contador de bytes liberados
 
   double _dragX = 0;
   double _dragY = 0;
@@ -83,11 +87,16 @@ class _PhotoSweepScreenState extends ConsumerState<PhotoSweepScreen> with Ticker
   Future<void> _deletePhoto(AssetEntity photo) async {
     await HapticService.medium();
     
-    // Guardar en papelera persistente
-    await TrashService.addPhoto(photo.id);
+    // Obtener tamaño de la foto
+    final file = await photo.file;
+    final fileSize = file?.lengthSync() ?? 0;
+    
+    // Guardar en papelera persistente con tamaño
+    await TrashService.addPhoto(photo.id, bytes: fileSize);
     
     setState(() {
       _photosToDelete.add(photo);
+      _totalBytesDeleted += fileSize;
     });
 
     await _loadTrashCount();
@@ -132,13 +141,54 @@ class _PhotoSweepScreenState extends ConsumerState<PhotoSweepScreen> with Ticker
     if (_currentIndex < _photos.length - 1) {
       setState(() => _currentIndex++);
       _cardController.forward(from: 0);
+      
+      // Mostrar consejo cada 10 fotos
+      if ((_currentIndex + 1) % 10 == 0) {
+        _showTip();
+      }
     } else {
       _showCompletionDialog();
     }
   }
 
+  void _showTip() {
+    final settings = ref.read(settingsProvider);
+    final tip = CleaningTips.getRandomTip(settings.language);
+    
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              tip['title']!,
+              style: const TextStyle(fontWeight: FontWeight.bold),
+            ),
+            const SizedBox(height: 4),
+            Text(tip['message']!),
+          ],
+        ),
+        duration: const Duration(seconds: 4),
+        behavior: SnackBarBehavior.floating,
+      ),
+    );
+  }
+
+  String _formatBytes(int bytes) {
+    if (bytes < 1024) return '$bytes B';
+    if (bytes < 1024 * 1024) return '${(bytes / 1024).toStringAsFixed(1)} KB';
+    if (bytes < 1024 * 1024 * 1024) return '${(bytes / (1024 * 1024)).toStringAsFixed(1)} MB';
+    return '${(bytes / (1024 * 1024 * 1024)).toStringAsFixed(1)} GB';
+  }
+
   Future<void> _showCompletionDialog() async {
     final totalInTrash = await TrashService.getTrashCount();
+    
+    // Guardar estadísticas de la sesión
+    if (_trashCount > 0) {
+      await StatsService.recordSession(_trashCount, _totalBytesDeleted);
+    }
     
     if (!mounted) return;
     
@@ -156,8 +206,17 @@ class _PhotoSweepScreenState extends ConsumerState<PhotoSweepScreen> with Ticker
             ),
             const SizedBox(height: 16),
             Text('Has revisado todas las fotos'),
-            if (totalInTrash > 0)
+            if (totalInTrash > 0) ...[
+              const SizedBox(height: 8),
               Text('$totalInTrash fotos en la papelera'),
+              Text(
+                'Espacio: ${_formatBytes(_totalBytesDeleted)}',
+                style: TextStyle(
+                  fontWeight: FontWeight.bold,
+                  color: Theme.of(context).colorScheme.primary,
+                ),
+              ),
+            ],
           ],
         ),
         actions: [
@@ -286,6 +345,14 @@ class _PhotoSweepScreenState extends ConsumerState<PhotoSweepScreen> with Ticker
                             fontWeight: _trashCount == 0 ? FontWeight.normal : FontWeight.bold,
                           ),
                         ),
+                        if (_totalBytesDeleted > 0)
+                          Text(
+                            'Espacio: ${_formatBytes(_totalBytesDeleted)}',
+                            style: theme.textTheme.bodySmall?.copyWith(
+                              color: theme.colorScheme.primary,
+                              fontWeight: FontWeight.bold,
+                            ),
+                          ),
                       ],
                     ),
                     IconButton(

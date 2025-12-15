@@ -4,11 +4,24 @@ import 'package:photo_manager/photo_manager.dart';
 
 class TrashService {
   static const _key = 'trash_photos';
+  static const _bytesKey = 'trash_bytes';
 
   // Guardar IDs de fotos marcadas
   static Future<void> saveMarkedPhotos(List<String> photoIds) async {
     final prefs = await SharedPreferences.getInstance();
     await prefs.setString(_key, jsonEncode(photoIds));
+  }
+
+  // Guardar bytes totales
+  static Future<void> saveTotalBytes(int bytes) async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setInt(_bytesKey, bytes);
+  }
+
+  // Obtener bytes totales
+  static Future<int> getTotalBytes() async {
+    final prefs = await SharedPreferences.getInstance();
+    return prefs.getInt(_bytesKey) ?? 0;
   }
 
   // Obtener IDs de fotos marcadas
@@ -40,26 +53,37 @@ class TrashService {
     return entities;
   }
 
-  // Añadir foto a la papelera
-  static Future<void> addPhoto(String photoId) async {
+  // Añadir foto a la papelera con tamaño
+  static Future<void> addPhoto(String photoId, {int? bytes}) async {
     final current = await getMarkedPhotos();
     if (!current.contains(photoId)) {
       current.add(photoId);
       await saveMarkedPhotos(current);
+      
+      if (bytes != null) {
+        final currentBytes = await getTotalBytes();
+        await saveTotalBytes(currentBytes + bytes);
+      }
     }
   }
 
   // Eliminar foto de la papelera (restaurar)
-  static Future<void> removePhoto(String photoId) async {
+  static Future<void> removePhoto(String photoId, {int? bytes}) async {
     final current = await getMarkedPhotos();
     current.remove(photoId);
     await saveMarkedPhotos(current);
+    
+    if (bytes != null) {
+      final currentBytes = await getTotalBytes();
+      await saveTotalBytes((currentBytes - bytes).clamp(0, double.maxFinite.toInt()));
+    }
   }
 
   // Limpiar papelera completamente
   static Future<void> clearTrash() async {
     final prefs = await SharedPreferences.getInstance();
     await prefs.remove(_key);
+    await prefs.remove(_bytesKey);
   }
 
   // Obtener cantidad de fotos en papelera
@@ -68,3 +92,4 @@ class TrashService {
     return photos.length;
   }
 }
+

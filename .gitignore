@@ -1,5 +1,6 @@
 # Miscellaneous
 *.class
+google-services.json
 *.log
 *.pyc
 *.swp

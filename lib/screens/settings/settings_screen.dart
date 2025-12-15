@@ -5,6 +5,7 @@ import '../../core/providers/settings_provider.dart';
 import '../../core/models/app_settings.dart' as models;
 import '../../core/theme/app_theme.dart';
 import '../../core/services/haptic_service.dart';
+import '../photosweep/stats_screen.dart';
 
 class SettingsScreen extends ConsumerWidget {
   const SettingsScreen({super.key});
@@ -95,6 +96,29 @@ class SettingsScreen extends ConsumerWidget {
               onTap: () => _showLanguageDialog(context, ref, settings),
             ),
           ).animate().fadeIn(delay: 100.ms).slideX(begin: -0.1),
+
+          const SizedBox(height: 24),
+
+          // PhotoSweep Section
+          _SectionHeader(title: 'PhotoSweep', icon: Icons.cleaning_services_rounded),
+          _SettingsCard(
+            child: _SettingsTile(
+              title: 'Estadísticas',
+              subtitle: 'Ver tu progreso de limpieza',
+              icon: Icons.analytics_rounded,
+              onTap: () async {
+                await HapticService.light();
+                if (context.mounted) {
+                  Navigator.push(
+                    context,
+                    MaterialPageRoute(
+                      builder: (context) => const StatsScreen(),
+                    ),
+                  );
+                }
+              },
+            ),
+          ).animate().fadeIn(delay: 250.ms).slideX(begin: -0.1),
 
           const SizedBox(height: 24),
 
