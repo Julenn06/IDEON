@@ -1,9 +1,10 @@
 import 'dart:convert';
 import 'package:http/http.dart' as http;
+import '../constants/backend_config.dart';
 
 class ApiService {
   // Configuración del backend
-  static const String baseUrl = 'http://localhost:5000/api';
+  static String get baseUrl => BackendConfig.apiUrl;
   
   final http.Client _client;
   
@@ -19,23 +20,23 @@ class ApiService {
   // USERS
   // ============================================================
   
-  Future<Map<String, dynamic>> registerUser({
+  Future<Map<String, dynamic>> createUser({
     required String username,
     String? avatarUrl,
   }) async {
     final response = await _client.post(
-      Uri.parse('$baseUrl/Users/register'),
+      Uri.parse('$baseUrl/Users'),
       headers: _headers,
       body: jsonEncode({
-        'username': username,
-        'avatarUrl': avatarUrl,
+        'Username': username,
+        'AvatarUrl': avatarUrl,
       }),
     );
     
     if (response.statusCode == 200) {
       return jsonDecode(response.body);
     } else {
-      throw Exception('Error al registrar usuario: ${response.body}');
+      throw Exception('Error al crear usuario: ${response.body}');
     }
   }
   
@@ -52,20 +53,14 @@ class ApiService {
     }
   }
   
-  Future<Map<String, dynamic>> updateUserAvatar({
-    required String userId,
-    required String avatarUrl,
-  }) async {
-    final response = await _client.put(
-      Uri.parse('$baseUrl/Users/$userId/avatar'),
+  Future<void> updateLastLogin(String userId) async {
+    final response = await _client.post(
+      Uri.parse('$baseUrl/Users/$userId/login'),
       headers: _headers,
-      body: jsonEncode({'avatarUrl': avatarUrl}),
     );
     
-    if (response.statusCode == 200) {
-      return jsonDecode(response.body);
-    } else {
-      throw Exception('Error al actualizar avatar: ${response.body}');
+    if (response.statusCode != 200) {
+      throw Exception('Error al actualizar login: ${response.body}');
     }
   }
   
@@ -88,13 +83,14 @@ class ApiService {
     required bool notifications,
     required String language,
   }) async {
-    final response = await _client.put(
-      Uri.parse('$baseUrl/Users/$userId/settings'),
+    final response = await _client.post(
+      Uri.parse('$baseUrl/Users/settings'),
       headers: _headers,
       body: jsonEncode({
-        'darkMode': darkMode,
-        'notifications': notifications,
-        'language': language,
+        'UserId': userId,
+        'DarkMode': darkMode,
+        'Notifications': notifications,
+        'Language': language,
       }),
     );
     
@@ -119,10 +115,10 @@ class ApiService {
       Uri.parse('$baseUrl/PhotoClash/rooms'),
       headers: _headers,
       body: jsonEncode({
-        'hostUserId': hostUserId,
-        'roundsTotal': roundsTotal,
-        'secondsPerRound': secondsPerRound,
-        'nsfwAllowed': nsfwAllowed,
+        'HostUserId': hostUserId,
+        'RoundsTotal': roundsTotal,
+        'SecondsPerRound': secondsPerRound,
+        'NsfwAllowed': nsfwAllowed,
       }),
     );
     
@@ -141,8 +137,8 @@ class ApiService {
       Uri.parse('$baseUrl/PhotoClash/rooms/join'),
       headers: _headers,
       body: jsonEncode({
-        'code': code,
-        'userId': userId,
+        'Code': code,
+        'UserId': userId,
       }),
     );
     
@@ -174,8 +170,8 @@ class ApiService {
       Uri.parse('$baseUrl/PhotoClash/rooms/start'),
       headers: _headers,
       body: jsonEncode({
-        'roomId': roomId,
-        'language': language,
+        'RoomId': roomId,
+        'Language': language,
       }),
     );
     
@@ -208,9 +204,9 @@ class ApiService {
       Uri.parse('$baseUrl/PhotoClash/photos'),
       headers: _headers,
       body: jsonEncode({
-        'roundId': roundId,
-        'playerId': playerId,
-        'photoUrl': photoUrl,
+        'RoundId': roundId,
+        'PlayerId': playerId,
+        'PhotoUrl': photoUrl,
       }),
     );
     
@@ -243,9 +239,9 @@ class ApiService {
       Uri.parse('$baseUrl/PhotoClash/votes'),
       headers: _headers,
       body: jsonEncode({
-        'roundId': roundId,
-        'voterPlayerId': voterPlayerId,
-        'votedPlayerId': votedPlayerId,
+        'RoundId': roundId,
+        'VoterPlayerId': voterPlayerId,
+        'VotedPlayerId': votedPlayerId,
       }),
     );
     
@@ -333,12 +329,12 @@ class ApiService {
     DateTime? dateTaken,
   }) async {
     final response = await _client.post(
-      Uri.parse('$baseUrl/PhotoSweep/register'),
+      Uri.parse('$baseUrl/PhotoSweep/photos'),
       headers: _headers,
       body: jsonEncode({
-        'userId': userId,
-        'uri': uri,
-        'dateTaken': dateTaken?.toIso8601String(),
+        'UserId': userId,
+        'Uri': uri,
+        'DateTaken': dateTaken?.toIso8601String(),
       }),
     );
     
@@ -351,9 +347,8 @@ class ApiService {
   
   Future<Map<String, dynamic>> keepPhoto(String photoId) async {
     final response = await _client.post(
-      Uri.parse('$baseUrl/PhotoSweep/keep'),
+      Uri.parse('$baseUrl/PhotoSweep/photos/$photoId/keep'),
       headers: _headers,
-      body: jsonEncode({'photoId': photoId}),
     );
     
     if (response.statusCode == 200) {
@@ -365,9 +360,8 @@ class ApiService {
   
   Future<Map<String, dynamic>> deletePhoto(String photoId) async {
     final response = await _client.post(
-      Uri.parse('$baseUrl/PhotoSweep/delete'),
+      Uri.parse('$baseUrl/PhotoSweep/photos/$photoId/delete'),
       headers: _headers,
-      body: jsonEncode({'photoId': photoId}),
     );
     
     if (response.statusCode == 200) {
@@ -377,9 +371,9 @@ class ApiService {
     }
   }
   
-  Future<List<dynamic>> getPendingPhotos(String userId) async {
+  Future<List<dynamic>> getUnreviewedPhotos(String userId) async {
     final response = await _client.get(
-      Uri.parse('$baseUrl/PhotoSweep/pending/$userId'),
+      Uri.parse('$baseUrl/PhotoSweep/users/$userId/unreviewed'),
       headers: _headers,
     );
     
@@ -392,9 +386,8 @@ class ApiService {
   
   Future<Map<String, dynamic>> recoverPhoto(String photoId) async {
     final response = await _client.post(
-      Uri.parse('$baseUrl/PhotoSweep/recover'),
+      Uri.parse('$baseUrl/PhotoSweep/photos/$photoId/recover'),
       headers: _headers,
-      body: jsonEncode({'photoId': photoId}),
     );
     
     if (response.statusCode == 200) {
@@ -406,7 +399,7 @@ class ApiService {
   
   Future<Map<String, dynamic>> getStats(String userId) async {
     final response = await _client.get(
-      Uri.parse('$baseUrl/PhotoSweep/stats/$userId'),
+      Uri.parse('$baseUrl/PhotoSweep/users/$userId/stats'),
       headers: _headers,
     );
     
@@ -417,9 +410,9 @@ class ApiService {
     }
   }
   
-  Future<List<dynamic>> getRecentDeletedPhotos(String userId) async {
+  Future<List<dynamic>> getDeletedPhotos(String userId, {int limit = 5}) async {
     final response = await _client.get(
-      Uri.parse('$baseUrl/PhotoSweep/recent-deleted/$userId'),
+      Uri.parse('$baseUrl/PhotoSweep/users/$userId/deleted?limit=$limit'),
       headers: _headers,
     );
     
@@ -430,32 +423,21 @@ class ApiService {
     }
   }
   
-  Future<void> permanentDeletePhoto(String photoId) async {
-    final response = await _client.post(
-      Uri.parse('$baseUrl/PhotoSweep/permanent-delete'),
-      headers: _headers,
-      body: jsonEncode({'photoId': photoId}),
-    );
-    
-    if (response.statusCode != 200) {
-      throw Exception('Error al eliminar permanentemente: ${response.body}');
-    }
-  }
   
   // ============================================================
   // HEALTH CHECK
   // ============================================================
   
-  Future<Map<String, dynamic>> healthCheck() async {
-    final response = await _client.get(
-      Uri.parse('http://localhost:5000/health'),
-      headers: _headers,
-    );
-    
-    if (response.statusCode == 200) {
-      return jsonDecode(response.body);
-    } else {
-      throw Exception('Backend no disponible');
+  Future<bool> isBackendAvailable() async {
+    try {
+      final response = await _client.get(
+        Uri.parse(BackendConfig.baseUrl),
+        headers: _headers,
+      ).timeout(BackendConfig.connectionTimeout);
+      
+      return response.statusCode == 200;
+    } catch (e) {
+      return false;
     }
   }
   

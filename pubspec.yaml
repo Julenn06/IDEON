@@ -42,11 +42,11 @@ dependencies:
   photo_manager: ^3.5.1
   photo_manager_image_provider: ^2.1.2
   
-  # Firebase
-  firebase_core: ^4.2.1
-  firebase_database: ^12.1.0
-  cloud_firestore: ^6.1.0
-  firebase_storage: ^13.0.4
+  # Firebase - Comentado temporalmente para compilar sin google-services.json
+  # firebase_core: ^4.2.1
+  # firebase_database: ^12.1.0
+  # cloud_firestore: ^6.1.0
+  # firebase_storage: ^13.0.4
   
   # UI & Animations
   lottie: ^3.2.0
@@ -65,6 +65,9 @@ dependencies:
   
   # HTTP Client
   http: ^1.2.0
+  
+  # SignalR for PhotoClash real-time
+  signalr_netcore: ^1.3.7
   
   # Haptic Feedback
   vibration: ^3.1.4

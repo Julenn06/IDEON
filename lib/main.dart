@@ -1,7 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:firebase_core/firebase_core.dart';
 import 'core/providers/settings_provider.dart';
 import 'core/theme/app_theme.dart';
 import 'core/models/app_settings.dart' as models;
@@ -9,9 +8,6 @@ import 'screens/home_screen.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
-  
-  // Initialize Firebase
-  await Firebase.initializeApp();
   
   // Set preferred orientations
   SystemChrome.setPreferredOrientations([

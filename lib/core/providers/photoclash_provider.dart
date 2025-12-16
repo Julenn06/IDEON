@@ -2,9 +2,11 @@ import 'dart:io';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:uuid/uuid.dart';
 import '../models/game_room.dart';
-import '../services/firebase_service.dart';
+import '../services/api_service.dart';
+import '../services/signalr_service.dart';
 
-final firebaseServiceProvider = Provider((ref) => FirebaseService());
+final apiServiceProvider = Provider((ref) => ApiService());
+final signalRServiceProvider = Provider((ref) => SignalRService());
 
 final playerIdProvider = Provider((ref) => const Uuid().v4());
 
@@ -13,7 +15,8 @@ final currentRoomProvider = AsyncNotifierProvider<CurrentRoomNotifier, GameRoom?
 });
 
 class CurrentRoomNotifier extends AsyncNotifier<GameRoom?> {
-  FirebaseService get _firebaseService => ref.read(firebaseServiceProvider);
+  ApiService get _apiService => ref.read(apiServiceProvider);
+  SignalRService get _signalRService => ref.read(signalRServiceProvider);
   String? _roomId;
 
   @override
@@ -33,18 +36,33 @@ class CurrentRoomNotifier extends AsyncNotifier<GameRoom?> {
     state = const AsyncValue.loading();
     
     try {
-      final room = await _firebaseService.createRoom(
+      // Crear sala en el backend C#
+      final roomData = await _apiService.createRoom(
+        hostUserId: hostId,
+        roundsTotal: rounds,
+        secondsPerRound: timePerRound,
+        nsfwAllowed: phraseMode == 'nsfw',
+      );
+      
+      _roomId = roomData['Id'];
+      
+      // Conectar SignalR
+      await _signalRService.connect(_roomId!);
+      _listenToSignalR();
+      
+      // Convertir a GameRoom (por compatibilidad con UI)
+      final room = GameRoom(
+        id: roomData['Id'],
+        code: roomData['Code'],
         hostId: hostId,
-        hostName: hostName,
         rounds: rounds,
         timePerRound: timePerRound,
         phraseMode: phraseMode,
         language: language,
         maxPlayers: maxPlayers,
+        status: GameStatus.waiting,
+        players: {hostId: Player(id: hostId, name: hostName)},
       );
-      
-      _roomId = room.id;
-      _listenToRoom(room.id);
       
       state = AsyncValue.data(room);
     } catch (e, stack) {
@@ -60,18 +78,34 @@ class CurrentRoomNotifier extends AsyncNotifier<GameRoom?> {
     state = const AsyncValue.loading();
     
     try {
-      final room = await _firebaseService.joinRoom(
+      // Unirse a sala en backend C#
+      final roomData = await _apiService.joinRoom(
         code: code,
-        playerId: playerId,
-        playerName: playerName,
+        userId: playerId,
       );
       
-      if (room == null) {
-        throw Exception('Room not found or already started');
-      }
+      _roomId = roomData['Id'];
       
-      _roomId = room.id;
-      _listenToRoom(room.id);
+      // Conectar SignalR
+      await _signalRService.connect(_roomId!);
+      _listenToSignalR();
+      
+      // Obtener datos completos de la sala
+      final fullRoomData = await _apiService.getRoom(_roomId!);
+      
+      // Convertir a GameRoom (simplificado)
+      final room = GameRoom(
+        id: fullRoomData['Id'],
+        code: fullRoomData['Code'],
+        hostId: fullRoomData['HostUserId'],
+        rounds: fullRoomData['RoundsTotal'],
+        timePerRound: fullRoomData['SecondsPerRound'],
+        phraseMode: 'normal',
+        language: 'es',
+        maxPlayers: 6,
+        status: GameStatus.waiting,
+        players: {playerId: Player(id: playerId, name: playerName)},
+      );
       
       state = AsyncValue.data(room);
     } catch (e, stack) {
@@ -83,9 +117,9 @@ class CurrentRoomNotifier extends AsyncNotifier<GameRoom?> {
     if (_roomId == null) return;
     
     try {
-      await _firebaseService.startGame(_roomId!, nsfwEnabled);
+      await _apiService.startGame(roomId: _roomId!, language: 'es');
     } catch (e) {
-      // Error handled by stream
+      // Error manejado por stream
     }
   }
 
@@ -96,12 +130,19 @@ class CurrentRoomNotifier extends AsyncNotifier<GameRoom?> {
   }) async {
     if (_roomId == null) throw Exception('No active room');
     
-    return await _firebaseService.uploadPhoto(
-      roomId: _roomId!,
+    // TODO: Subir foto a un storage (ej: servidor local, S3, etc.)
+    // Por ahora retornamos una URL de ejemplo
+    final photoUrl = 'https://picsum.photos/600/400?random=$roundNumber';
+    
+    final roundData = await _apiService.getCurrentRound(_roomId!);
+    
+    await _apiService.uploadPhoto(
+      roundId: roundData['Id'],
       playerId: playerId,
-      photoFile: photoFile,
-      roundNumber: roundNumber,
+      photoUrl: photoUrl,
     );
+    
+    return photoUrl;
   }
 
   Future<void> castVote({
@@ -111,33 +152,44 @@ class CurrentRoomNotifier extends AsyncNotifier<GameRoom?> {
   }) async {
     if (_roomId == null) return;
     
-    await _firebaseService.castVote(
-      roomId: _roomId!,
-      voterId: voterId,
+    final roundData = await _apiService.getCurrentRound(_roomId!);
+    
+    await _apiService.vote(
+      roundId: roundData['Id'],
+      voterPlayerId: voterId,
       votedPlayerId: votedPlayerId,
-      roundNumber: roundNumber,
     );
   }
 
   Future<Map<String, int>> calculateRoundResults(int roundNumber) async {
     if (_roomId == null) return {};
     
-    return await _firebaseService.calculateRoundResults(
-      roomId: _roomId!,
-      roundNumber: roundNumber,
-    );
+    // Obtener votos de la ronda
+    final roundData = await _apiService.getCurrentRound(_roomId!);
+    final votes = await _apiService.getRoundVotes(roundData['Id']);
+    
+    // Contar votos por jugador
+    final Map<String, int> results = {};
+    for (var vote in votes) {
+      final votedId = vote['VotedPlayerId'];
+      results[votedId] = (results[votedId] ?? 0) + 1;
+    }
+    
+    return results;
   }
 
   Future<void> nextRound(bool nsfwEnabled) async {
     if (_roomId == null) return;
     
-    await _firebaseService.nextRound(_roomId!, nsfwEnabled);
+    await _apiService.startNextRound(_roomId!);
   }
 
   Future<void> leaveRoom(String playerId) async {
     if (_roomId == null) return;
     
-    await _firebaseService.leaveRoom(_roomId!, playerId);
+    await _signalRService.leaveRoom(_roomId!);
+    await _signalRService.disconnect();
+    
     _roomId = null;
     state = const AsyncValue.data(null);
   }
@@ -145,13 +197,15 @@ class CurrentRoomNotifier extends AsyncNotifier<GameRoom?> {
   Future<void> endGame() async {
     if (_roomId == null) return;
     
-    await _firebaseService.endGame(_roomId!);
+    await _apiService.finishGame(_roomId!);
   }
 
-  void _listenToRoom(String roomId) {
-    _firebaseService.listenToRoom(roomId).listen(
-      (room) {
-        state = AsyncValue.data(room);
+  void _listenToSignalR() {
+    _signalRService.events.listen(
+      (event) {
+        // Actualizar estado según eventos de SignalR
+        // Por ahora solo logueamos
+        print('SignalR Event: ${event.runtimeType}');
       },
       onError: (error, stack) {
         state = AsyncValue.error(error, stack);
